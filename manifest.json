@@ -1,0 +1,11 @@
+{
+  "type": "preload-native",
+  "name": "BedrockVisuals",
+  "author": "Lime",
+  "version": "1.0.1",
+  "description": "BTP-style: Jump Circle, Damage Circle, Hitbox, Crosshair",
+  "entry": "libBedrockVisuals.so",
+  "minecraft_versions": ["1.26.60.X"],
+  "overwrite_files": [],
+  "overwrite_folders": []
+}

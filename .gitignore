@@ -1,0 +1,7 @@
+build/
+.xmake/
+*.so
+*.levipack
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "bedrockvisuals",
+  "version": "0.1.0",
+  "minecraft_versions": ["1.26.60.X"],
+  "info": {
+    "name": "BedrockVisuals",
+    "author": "Lime",
+    "description": "TargetESP – hit particle styles for Minecraft Bedrock on LeviLauncher.",
+    "homepage_url": "https://github.com/hater12132-ai/BedrockVisuals",
+    "tags": ["Visual", "TargetESP"]
+  },
+  "release_assets": {
+    "include": ["*.levipack", "*.so"],
+    "labels": {
+      "BedrockVisuals.levipack": "LeviPack",
+      "libBedrockVisuals.so": "Native library"
+    }
+  }
+}
