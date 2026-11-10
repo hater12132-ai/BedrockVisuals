@@ -1,0 +1,10 @@
+build/
+.xmake/
+*.o
+*.so
+*.levipack
+.DS_Store
+*.log
+.idea/
+.vscode/
+*.user

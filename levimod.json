@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "customskies",
+  "version": "0.1.0",
+  "minecraft_versions": ["1.26.60.*"],
+  "info": {
+    "name": "CustomSkies",
+    "author": "Lime",
+    "description": "Replace the whole Minecraft sky with a moving video. Looks cool and beautiful.",
+    "tags": ["Visual", "Sky"]
+  },
+  "release_assets": {
+    "include": ["*.levipack", "*.so"]
+  }
+}
