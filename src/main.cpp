@@ -7,25 +7,17 @@
 
 #include <pl/Mod.hpp>
 
+#include <atomic>
 #include <filesystem>
 #include <memory>
 #include <string>
-#include <thread>
-#include <chrono>
 
 namespace fs = std::filesystem;
 
 namespace {
 
 customskies::CustomSkiesModule* gModule = nullptr;
-
-void onFrameThunk() {
-    if (gModule) gModule->onFrame();
-}
-
-void onSkyDrawThunk() {
-    if (gModule) gModule->onSkyDraw();
-}
+std::atomic<bool> gDeferredDone{false};
 
 std::string findVideo(const fs::path& configDir) {
     const fs::path candidates[] = {
@@ -43,13 +35,32 @@ std::string findVideo(const fs::path& configDir) {
     return (configDir / ".." / "assets" / "sky.mp4").lexically_normal().string();
 }
 
-// Retry WindUI attach a few times — WindUIBE may load after us
-void windUIAttachWorker() {
-    for (int i = 0; i < 20; ++i) {
-        if (customskies::tryAttachWindUI()) return;
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+void doDeferredStart() {
+    if (gDeferredDone.exchange(true)) return;
+
+    customskies::diag::info("deferred start: hooks + decoder");
+
+    customskies::setSkyDrawCallback([]() {
+        if (gModule) gModule->onSkyDraw();
+    });
+
+    if (!customskies::installGlSkyHook()) {
+        customskies::diag::error("glClear hook failed");
+    } else {
+        customskies::diag::info("glClear hook ok");
     }
-    customskies::diag::info("WindUI: gave up attaching (mod still works without UI)");
+
+    if (gModule) {
+        gModule->onEnable(); // starts MediaCodec on background thread
+    }
+
+    // Optional — never required
+    customskies::tryAttachWindUI();
+}
+
+void onFrameThunk() {
+    doDeferredStart();
+    if (gModule) gModule->onFrame();
 }
 
 } // namespace
@@ -63,74 +74,59 @@ CustomSkiesModule* getActiveModule() {
 class CustomSkiesMod {
 public:
     bool load(pl::mod::ModContext& ctx) {
+        // Keep this FAST — Levi waits on every mod's load()
         auto dir = ctx.configDir().string();
         customskies::diag::init(dir);
-        customskies::diag::info("CustomSkies loading…");
+        customskies::diag::info("load()");
 
         std::error_code ec;
         fs::create_directories(dir, ec);
 
-        mConfig = customskies::ModConfig{};
-
         mModule = std::make_unique<customskies::CustomSkiesModule>();
-        mModule->setConfig(mConfig);
+        mModule->setConfig(customskies::ModConfig{});
         mModule->setVideoPath(findVideo(dir));
         mModule->onInit();
         gModule = mModule.get();
 
-        customskies::diag::stage("load", "ok");
-        customskies::diag::dumpStatus();
+        customskies::diag::info("load() done");
         return true;
     }
 
     bool enable(pl::mod::ModContext&) {
-        customskies::diag::stage("enable");
+        // Keep this FAST — no MediaCodec, no glClear hook here
+        customskies::diag::info("enable()");
+        gDeferredDone.store(false);
 
         customskies::setFrameCallback(&onFrameThunk);
+        // Only eglSwapBuffers so we get a callback after the game is actually rendering
         if (!customskies::installFrameHook()) {
-            customskies::diag::warn("eglSwapBuffers hook failed (non-fatal)");
+            customskies::diag::warn("eglSwapBuffers hook failed at enable");
         }
 
-        customskies::setSkyDrawCallback(&onSkyDrawThunk);
-        if (!customskies::installGlSkyHook()) {
-            customskies::diag::error("glClear hook failed — sky will not draw");
-            customskies::diag::setLastError("glClear hook failed");
-        } else {
-            customskies::diag::info("glClear sky hook active");
-        }
-
-        // Start decoder/draw according to config (default enabled)
-        if (mModule) mModule->onEnable();
-
-        // Attach to WindUIBE menu if present (background retries)
-        try {
-            mUiThread = std::thread(windUIAttachWorker);
-            mUiThread.detach();
-        } catch (...) {
-            customskies::diag::warn("WindUI attach thread failed");
-        }
-
+        customskies::diag::info("enable() done — sky starts on first frame");
         return true;
     }
 
     bool disable(pl::mod::ModContext&) {
-        customskies::diag::stage("disable");
+        customskies::diag::info("disable()");
         customskies::detachWindUI();
         customskies::removeGlSkyHook();
         customskies::setSkyDrawCallback(nullptr);
         customskies::removeFrameHook();
         customskies::setFrameCallback(nullptr);
+        gDeferredDone.store(false);
         if (mModule) mModule->onDisable();
         return true;
     }
 
     bool unload(pl::mod::ModContext&) {
-        customskies::diag::stage("unload");
+        customskies::diag::info("unload()");
         customskies::detachWindUI();
         customskies::removeGlSkyHook();
         customskies::setSkyDrawCallback(nullptr);
         customskies::removeFrameHook();
         customskies::setFrameCallback(nullptr);
+        gDeferredDone.store(false);
         gModule = nullptr;
         if (mModule) {
             mModule->onDisable();
@@ -140,9 +136,7 @@ public:
     }
 
 private:
-    customskies::ModConfig mConfig;
     std::unique_ptr<customskies::CustomSkiesModule> mModule;
-    std::thread mUiThread;
 };
 
 PL_REGISTER_MOD(CustomSkiesMod, CustomSkiesMod{})
